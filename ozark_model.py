@@ -4,7 +4,7 @@ from base import *
 def run_model(params_file=None):
 
     if params_file is None:
-        params_file = 'params.txt'
+        params_file = 'params_test.txt'
     params = ParamParser(params_file)
 
     runtime = int(params.read('runtime', 'float')) # years
@@ -24,6 +24,13 @@ def run_model(params_file=None):
         plot_interval = runtime + dt
     else:
         plot_interval = int(runtime/num_plots)
+    outdir = params.read('outdir', 'str')
+    if not os.path.isdir(outdir):
+        os.mkdir(outdir)
+    #if not os.path.isdir(os.path.join(outdir, 'tmp')):
+    #    os.mkdir(os.path.join(outdir, 'tmp'))
+    outfile = params.read('outfile', 'str')
+    outfile_base, _ = os.path.splitext(outfile)
 
     initial_mg = read_netcdf('initial_topg.nc')
 
@@ -80,13 +87,13 @@ def run_model(params_file=None):
     mg.add_zeros('node', 'erosion__accum', units='m')
     mg.add_zeros('node', 'uplift__accum', units='m')
 
-    datasaver = DataSaver(nrows, ncols, dx, save_dt)
-    datasaver.add_field('topographic__elevation', 'm')
-    datasaver.add_field('erosion__accum', 'm')
-    datasaver.add_field('uplift__accum', 'm')
-    datasaver.add_value('topographic__elevation', z)
-    datasaver.add_value('erosion__accum', mg.at_node['erosion__accum'])
-    datasaver.add_value('uplift__accum', mg.at_node['uplift__accum'])
+    '''
+    write_netcdf(os.path.join(outdir, 'tmp', '{}_t=0.nc'.format(outfile_base)),
+                 mg, format='NETCDF3_64BIT',
+                 names=['topographic__elevation', 'erosion__accum', 'uplift__accum'])
+    '''
+    write_raster_netcdf(os.path.join(outdir, outfile), mg, time=0, append=False,
+                        names=['topographic__elevation', 'erosion__accum', 'uplift__accum'])
 
     previous_topg = np.zeros(len(z))
     previous_topg[:] = z[:]
@@ -117,9 +124,13 @@ def run_model(params_file=None):
 
         save_interval += dt
         if save_interval == save_dt:
-            datasaver.add_value('topographic__elevation', z)
-            datasaver.add_value('erosion__accum', mg.at_node['erosion__accum'])
-            datasaver.add_value('uplift__accum', mg.at_node['uplift__accum'])
+            '''
+            write_netcdf(os.path.join(outdir, 'tmp', '{}_t={}.nc'.format(outfile_base, int((i+1)*dt))),
+                         mg, format='NETCDF3_64BIT',
+                         names=['topographic__elevation', 'erosion__accum', 'uplift__accum'])
+            '''
+            write_raster_netcdf(os.path.join(outdir, outfile), mg, time=(i+1)*dt, append=True,
+                                names=['topographic__elevation', 'erosion__accum', 'uplift__accum'])
             save_interval = 0
 
         if int(dt*(i+1)) == plot_interval*plot_idx:
@@ -140,10 +151,39 @@ def run_model(params_file=None):
 
         #print('Running... [{}%]'.format(int((i+1)*100.0/nt)), end='\r')
 
+    #post_process(params_file=params_file)
+
+def post_process(params_file=None):
+    if params_file is None:
+        params_file = 'params_test.txt'
+    params = ParamParser(params_file)
+
+    runtime = int(params.read('runtime', 'float')) # years
+    nrows = params.read('nrows', 'int')
+    ncols = params.read('ncols', 'int')
+    dx = params.read('dx', 'float') # meter
+    save_dt = params.read('save_dt', 'int')
+    nt = int(runtime/save_dt)
     outdir = params.read('outdir', 'str')
-    if not os.path.isdir(outdir):
-        os.mkdir(outdir)
     outfile = params.read('outfile', 'str')
+    outfile_base, _ = os.path.splitext(outfile)
+
+    datasaver = DataSaver(nrows, ncols, dx, save_dt)
+    datasaver.add_field('topographic__elevation', 'm')
+    datasaver.add_field('erosion__accum', 'm')
+    datasaver.add_field('uplift__accum', 'm')
+
+    mg = read_netcdf(os.path.join(outdir, 'tmp', '{}_t=0.nc'.format(outfile_base)))
+    datasaver.add_value('topographic__elevation', mg.at_node['topographic__elevation'])
+    datasaver.add_value('erosion__accum', mg.at_node['erosion__accum'])
+    datasaver.add_value('uplift__accum', mg.at_node['uplift__accum'])
+
+    for i in range(nt):
+        mg = read_netcdf(os.path.join(outdir, 'tmp', '{}_t={}.nc'.format(outfile_base, int((i+1)*save_dt))))
+        datasaver.add_value('topographic__elevation', mg.at_node['topographic__elevation'])
+        datasaver.add_value('erosion__accum', mg.at_node['erosion__accum'])
+        datasaver.add_value('uplift__accum', mg.at_node['uplift__accum'])
+
     datasaver.write_to_nc(os.path.join(outdir, outfile))
 
 

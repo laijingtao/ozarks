@@ -15,6 +15,7 @@ from flexure import gFlex
 from landlab.plot.imshow import imshow_grid
 from landlab.plot.drainage_plot import drainage_plot
 from landlab.io.netcdf import write_netcdf
+from landlab.io.netcdf import write_raster_netcdf
 from landlab.io.netcdf import read_netcdf
 
 sys.path.append(os.environ['PARAMPARSER_PATH'])
