@@ -41,6 +41,7 @@ def run_model(params_file=None):
     orogen = np.intersect1d(mg.core_nodes, np.where(mg.node_y <= orogen_width)[0])  # mountain, load
     river_outlet = np.intersect1d(np.where(mg.node_y == orogen_width)[0],
                                   np.where(mg.node_x == mg.node_x.max())[0])  # base river
+    river = np.where(mg.node_y == orogen_width)[0]
 
     mg.add_zeros('node', 'topographic__elevation', units='m')
     z = mg.at_node['topographic__elevation']
@@ -54,7 +55,8 @@ def run_model(params_file=None):
 
     #set up grid's boundary conditions (right, top, left, bottom) is inactive
     mg.set_closed_boundaries_at_grid_edges(True, False, True, True)
-    mg.status_at_node[river_outlet] = FIXED_VALUE_BOUNDARY
+    #mg.status_at_node[river_outlet] = FIXED_VALUE_BOUNDARY
+    mg.status_at_node[river] = FIXED_VALUE_BOUNDARY
 
     fr = FlowRouter(mg)
     sp = FastscapeEroder(mg, K_sp = k_field)
