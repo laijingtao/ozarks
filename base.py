@@ -3,6 +3,7 @@ import os
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy
 
 import landlab
 from landlab import RasterModelGrid, FIXED_VALUE_BOUNDARY
@@ -20,5 +21,6 @@ from landlab.io.netcdf import read_netcdf
 
 sys.path.append(os.environ['PARAMPARSER_PATH'])
 from paramparser import ParamParser
+from paramparser import MissingKeyError
 
 from datasaver import DataSaver

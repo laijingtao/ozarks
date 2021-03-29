@@ -163,6 +163,7 @@ class gFlex(Component):
                 "gFlex not installed! For installation instructions see "
                 + "gFlex on GitHub: https://github.com/awickert/gFlex"
             )
+        # NOTE: original landlab file doesn't have Mirror option -JL Oct 2019
         BC_options = (
             "0Displacement0Slope",
             "0Moment0Shear",
@@ -177,8 +178,10 @@ class gFlex(Component):
 
         # set up the grid variables:
         self._grid = grid
-        flex.dx = grid.dx
-        flex.dy = grid.dy
+        #flex.dx = grid.dx  # This oroginal landlab
+        #flex.dy = grid.dy
+        flex.dy = grid.dx # NOTE: gflex and landlab have different dx/dy - JL Oct 2019
+        flex.dx = grid.dy
 
         # we assume these properties are fixed in this relatively
         # straightforward implementation, but they can still be set if you

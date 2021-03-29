@@ -10,10 +10,14 @@ def run_model(params_file=None):
     runtime = int(params.read('runtime', 'float')) # years
     dt = params.read('dt', 'int') # years
     nt = int(runtime/dt)
-    nrows = params.read('nrows', 'int')
-    ncols = params.read('ncols', 'int')
-    num_of_nodes = nrows*ncols
+    Lx = params.read('Lx', 'float')
+    Ly = params.read('Ly', 'float')
     dx = params.read('dx', 'float') # meter
+    nrows = int(Ly/dx)
+    ncols = int(Lx/dx)
+    #nrows = params.read('nrows', 'int')
+    #ncols = params.read('ncols', 'int')
+    num_of_nodes = nrows*ncols
     #uplift_rate = 0.0015 # m/year
     k_sp_orogen = params.read('k_sp_orogen', 'float')
     k_sp_foreland = params.read('k_sp_foreland', 'float')
@@ -32,37 +36,49 @@ def run_model(params_file=None):
     outfile = params.read('outfile', 'str')
     outfile_base, _ = os.path.splitext(outfile)
 
-    initial_mg = read_netcdf('initial_topg.nc')
+    try:
+        initial_file = params.read('initial_file', 'str')
+    except MissingKeyError:
+        initial_file = 'initial_topg.nc'
+    initial_mg = read_netcdf(initial_file)
 
     mg = RasterModelGrid((nrows, ncols), dx)
 
     orogen_width = params.read('orogen_width', 'int')
     foreland = np.intersect1d(mg.core_nodes, np.where(mg.node_y > orogen_width)[0])  # foreland basin
     orogen = np.intersect1d(mg.core_nodes, np.where(mg.node_y <= orogen_width)[0])  # mountain, load
-    river_outlet = np.intersect1d(np.where(mg.node_y == orogen_width)[0],
-                                  np.where(mg.node_x == mg.node_x.max())[0])  # base river
-    river = np.where(mg.node_y == orogen_width)[0]
+    #river_outlet = np.intersect1d(np.where(mg.node_y == orogen_width+dx)[0],
+    #                              np.where(mg.node_x == mg.node_x.max())[0])  # base river
+    river_outlet = np.intersect1d(np.where(mg.node_y == orogen_width+dx)[0],
+                                  np.where(np.logical_or(mg.node_x == mg.node_x.max(),
+                                                         mg.node_x == mg.node_x.min()))[0])  # base river
+    river = np.where(mg.node_y == orogen_width+dx)[0]
 
     mg.add_zeros('node', 'topographic__elevation', units='m')
     z = mg.at_node['topographic__elevation']
     z[:] = initial_mg.at_node['topographic__elevation'][:]
-    z[foreland] += np.random.rand(len(z[foreland]))
+    #z[foreland] += np.random.rand(len(z[foreland])) # may not need this if initial has a drainage network
 
     mg.add_zeros('node', 'stream_power_k_field')
     k_field = mg.at_node['stream_power_k_field']
     k_field[foreland] = k_sp_foreland
     k_field[orogen] = k_sp_orogen
+    k_field[river] = k_sp_orogen
+
+    diff_field = k_field/0.002
 
     #set up grid's boundary conditions (right, top, left, bottom) is inactive
-    mg.set_closed_boundaries_at_grid_edges(True, False, True, True)
+    #mg.set_closed_boundaries_at_grid_edges(True, False, True, True)
+    mg.set_closed_boundaries_at_grid_edges(False, False, True, True)
     #mg.status_at_node[river_outlet] = FIXED_VALUE_BOUNDARY
-    mg.status_at_node[river] = FIXED_VALUE_BOUNDARY
+    #mg.status_at_node[river] = FIXED_VALUE_BOUNDARY
 
     fr = FlowRouter(mg)
-    sp = FastscapeEroder(mg, K_sp = k_field)
-    lin_diffuse = LinearDiffuser(mg, linear_diffusivity=1e-3)
+    sp = FastscapeEroder(mg, K_sp=k_field)
+    lin_diffuse = LinearDiffuser(mg, linear_diffusivity=diff_field)
 
-    gflex_mg = RasterModelGrid(5, (int(1000e3/dx)), dx)
+    beam_length = params.read('beam_length', 'float')
+    gflex_mg = RasterModelGrid(5, (int(beam_length/dx)), dx)
     gflex_mg.add_zeros('node', 'topographic__elevation', units='m')
     gflex_mg.add_zeros('node', 'surface_load__stress')
     load = gflex_mg.at_node['surface_load__stress']
@@ -114,7 +130,6 @@ def run_model(params_file=None):
         topg_change_erosion = previous_topg - z
         mg.at_node['erosion__accum'] += topg_change_erosion
         previous_topg[:] = z[:]
-        #lin_diffuse.run_one_step(dt)
 
         # uplift rate is the highest on the bottom boundary, decreases to 0 linearly on the top boundary
         #z[mg.core_nodes] += uplift_rate * dt * (mg.node_y.max() - mg.node_y[mg.core_nodes]) / mg.node_y.max()
@@ -123,6 +138,8 @@ def run_model(params_file=None):
         topg_change_uplift = z - previous_topg
         mg.at_node['uplift__accum'] += topg_change_uplift
         previous_topg[:] = z[:]
+
+        lin_diffuse.run_one_step(dt)
 
         save_interval += dt
         if save_interval == save_dt:
